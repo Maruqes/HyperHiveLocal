@@ -28,6 +28,26 @@ go.work.sum
 # env file
 .env
 
+node_modules/
+
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/var/log/
+
+# NFS mount artifacts
+/mnt/hyperhive/
+
+# Temporary files
+*~
+*.swp
+*.swo
+*.bak
+tmp/
