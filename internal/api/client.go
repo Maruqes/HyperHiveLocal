@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -248,10 +249,20 @@ func rawJSONToString(raw json.RawMessage) string {
 }
 
 func NewClient(baseURL string) *Client {
+	return NewClientWithTLS(baseURL, false)
+}
+
+// NewClientWithTLS permits unverified certificates only when explicitly enabled.
+func NewClientWithTLS(baseURL string, insecureTLS bool) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if insecureTLS {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // Explicit opt-in for self-signed servers.
+	}
 	return &Client{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		HTTPClient: &http.Client{
-			Timeout: defaultTimeout,
+			Transport: transport,
+			Timeout:   defaultTimeout,
 		},
 	}
 }

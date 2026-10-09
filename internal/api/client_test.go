@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -364,5 +365,52 @@ func TestClientWithoutTimeoutPreservesTransport(t *testing.T) {
 	}
 	if source.Timeout != 15*time.Second {
 		t.Fatalf("source Timeout = %s, want unchanged", source.Timeout)
+	}
+}
+
+func TestSelfSignedTLSRequiresExplicitOptIn(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login":
+			io.WriteString(w, `{"token":"test-token"}`)
+		case "/virsh/getallvms", "/nfs/list":
+			io.WriteString(w, `[]`)
+		case "/virsh/add_ssh_key/test-vm":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	if _, err := NewClient(server.URL).Login(context.Background(), "test@example.test", "test-password"); err == nil {
+		t.Fatal("default client accepted an untrusted certificate")
+	}
+	if _, err := NewClientWithTLS(server.URL, false).Login(context.Background(), "test@example.test", "test-password"); err == nil {
+		t.Fatal("explicit verification accepted an untrusted certificate")
+	}
+
+	client := NewClientWithTLS(server.URL, true)
+	t.Cleanup(client.HTTPClient.CloseIdleConnections)
+	ctx := context.Background()
+	login, err := client.Login(ctx, "test@example.test", "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.GetAllVMs(ctx, login.Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListNFS(ctx, login.Token); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.AddSSHKey(ctx, login.Token, "test-vm", "ssh-ed25519 test"); err != nil {
+		t.Fatal(err)
+	}
+	if client.HTTPClient.Timeout != defaultTimeout {
+		t.Fatalf("SSH call changed original timeout to %s", client.HTTPClient.Timeout)
+	}
+	// Opting in on one client must not affect other clients or the shared transport.
+	if _, err := NewClient(server.URL).Login(ctx, "test@example.test", "test-password"); err == nil {
+		t.Fatal("insecure client changed verification for subsequent clients")
 	}
 }

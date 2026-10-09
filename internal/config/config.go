@@ -15,6 +15,7 @@ const (
 )
 
 type Config struct {
+	InsecureTLS          bool   `json:"insecure_tls,omitempty"`
 	BaseURL              string `json:"base_url"`
 	Email                string `json:"email,omitempty"`
 	Password             string `json:"password,omitempty"`

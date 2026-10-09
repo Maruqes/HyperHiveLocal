@@ -156,7 +156,7 @@ func TestLoginPostsAndStoresCredentials(t *testing.T) {
 	d := deps{
 		configPath: func() (string, error) { return path, nil },
 		loadConfig: func(string) (config.Config, error) {
-			return config.Config{BaseURL: configuredBaseURL}, nil
+			return config.Config{BaseURL: configuredBaseURL, InsecureTLS: true}, nil
 		},
 		saveConfig: func(gotPath string, cfg config.Config) error {
 			if gotPath != path {
@@ -165,7 +165,10 @@ func TestLoginPostsAndStoresCredentials(t *testing.T) {
 			saved = cfg
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, insecureTLS bool) apiClient {
+			if !insecureTLS {
+				t.Fatal("saved TLS setting was not passed to API client")
+			}
 			if baseURL != configuredBaseURL {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -189,6 +192,9 @@ func TestLoginPostsAndStoresCredentials(t *testing.T) {
 	if gotPassword != "pass" {
 		t.Fatalf("gotPassword = %q", gotPassword)
 	}
+	if !saved.InsecureTLS {
+		t.Fatal("TLS setting was not preserved")
+	}
 	if saved.Email != "hyperhive@email.com" || saved.Password != "pass" || saved.Token != "jwt-token" {
 		t.Fatalf("saved = %#v", saved)
 	}
@@ -204,7 +210,7 @@ func TestLoginRequiresSetup(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -231,7 +237,7 @@ func TestLoginPropagatesAPIError(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{loginFunc: func(ctx context.Context, email, password string) (api.LoginResponse, error) {
 				return api.LoginResponse{}, errors.New("invalid credentials")
 			}}
@@ -261,7 +267,7 @@ func TestVMsListsFromConfiguredAPIWithStoredToken(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			if baseURL != configuredBaseURL {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -311,7 +317,7 @@ func TestVMsRequiresLogin(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -339,7 +345,7 @@ func TestNFSListsSharesFromConfiguredAPIWithStoredToken(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			if baseURL != configuredBaseURL {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -390,7 +396,7 @@ func TestNFSRequiresLogin(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -418,7 +424,7 @@ func TestInstallNFSMountsAllShares(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			if baseURL != configuredBaseURL {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -475,7 +481,7 @@ func TestInstallNFSReportsNoShares(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return nil, nil
 			}}
@@ -504,7 +510,7 @@ func TestInstallNFSRequiresSetup(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -531,7 +537,7 @@ func TestInstallNFSRequiresLogin(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -559,7 +565,7 @@ func TestInstallNFSStopsOnCommandError(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return []api.NFSShare{
 					{ID: 1, Source: "host:/a", Name: "a"},
@@ -595,7 +601,7 @@ func TestRemoveNFSUnmountsAllShares(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			if baseURL != configuredBaseURL {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -650,7 +656,7 @@ func TestRemoveNFSReportsNoShares(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return nil, nil
 			}}
@@ -679,7 +685,7 @@ func TestRemoveNFSRequiresSetup(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -706,7 +712,7 @@ func TestRemoveNFSRequiresLogin(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -734,7 +740,7 @@ func TestRemoveNFSStopsOnCommandError(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return []api.NFSShare{
 					{ID: 1, Source: "host:/a", Name: "a"},
@@ -770,7 +776,7 @@ func TestSSHAddsKeyToSelectedVM(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			if baseURL != configuredBaseURL {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -837,7 +843,7 @@ func TestSSHAddsKeyFromSelectedPublicKeyFile(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			return fakeAPIClient{
 				getAllVMsFunc: func(ctx context.Context, token string) (api.VMsResponse, error) {
 					return api.VMsResponse{VMs: []api.VM{{Name: "proxmox", MachineName: "marques512sv", State: "RUNNING"}}}, nil
@@ -889,7 +895,7 @@ func TestSSHRejectsZeroSelection(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, _ bool) apiClient {
 			return fakeAPIClient{
 				getAllVMsFunc: func(ctx context.Context, token string) (api.VMsResponse, error) {
 					return api.VMsResponse{VMs: []api.VM{{Name: "proxmox", MachineName: "marques512sv", State: "RUNNING"}}}, nil
@@ -1032,7 +1038,7 @@ func TestAttemptMountAllMountsSharesAfterPing(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return []api.NFSShare{
 					{ID: 1, Source: "192.168.76.1:/mnt/ssd500", Name: "ssd500"},
@@ -1087,7 +1093,7 @@ func TestAttemptMountAllSkipsShareWhenPingFails(t *testing.T) {
 		loadConfig: func(string) (config.Config, error) {
 			return config.Config{BaseURL: "https://api.test", Token: "jwt-token"}, nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return []api.NFSShare{
 					{ID: 1, Source: "10.0.0.1:/a", Name: "a"},
@@ -1134,7 +1140,7 @@ func TestAttemptMountAllLogsMountErrors(t *testing.T) {
 		loadConfig: func(string) (config.Config, error) {
 			return config.Config{BaseURL: "https://api.test", Token: "jwt-token"}, nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			return fakeAPIClient{listNFSFunc: func(context.Context, string) ([]api.NFSShare, error) {
 				return []api.NFSShare{
 					{ID: 1, Source: "10.0.0.1:/a", Name: "a"},
@@ -1166,7 +1172,7 @@ func TestAttemptMountAllRequiresSetup(t *testing.T) {
 	d := deps{
 		configPath: func() (string, error) { return "/tmp/config.json", nil },
 		loadConfig: func(string) (config.Config, error) { return config.Config{}, nil },
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -1192,7 +1198,7 @@ func TestAttemptMountAllRequiresLogin(t *testing.T) {
 		loadConfig: func(string) (config.Config, error) {
 			return config.Config{BaseURL: "https://api.test"}, nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -1219,10 +1225,11 @@ func TestAttemptServiceLoginRefreshesToken(t *testing.T) {
 		configPath: func() (string, error) { return path, nil },
 		loadConfig: func(string) (config.Config, error) {
 			return config.Config{
-				BaseURL:  "https://api.test",
-				Email:    "user@example.test",
-				Password: "secret",
-				Token:    "old-token",
+				InsecureTLS: true,
+				BaseURL:     "https://api.test",
+				Email:       "user@example.test",
+				Password:    "secret",
+				Token:       "old-token",
 			}, nil
 		},
 		saveConfig: func(gotPath string, cfg config.Config) error {
@@ -1232,7 +1239,10 @@ func TestAttemptServiceLoginRefreshesToken(t *testing.T) {
 			saved = cfg
 			return nil
 		},
-		newAPIClient: func(baseURL string) apiClient {
+		newAPIClient: func(baseURL string, insecureTLS bool) apiClient {
+			if !insecureTLS {
+				t.Fatal("saved TLS setting was not passed to API client")
+			}
 			if baseURL != "https://api.test" {
 				t.Fatalf("baseURL = %q", baseURL)
 			}
@@ -1249,6 +1259,9 @@ func TestAttemptServiceLoginRefreshesToken(t *testing.T) {
 	code := attemptServiceLogin(context.Background(), logger, d)
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
+	}
+	if !saved.InsecureTLS {
+		t.Fatal("TLS setting was not preserved")
 	}
 	if saved.Token != "new-token" || saved.Email != "user@example.test" || saved.Password != "secret" {
 		t.Fatalf("saved config = %#v", saved)
@@ -1270,7 +1283,7 @@ func TestAttemptServiceLoginRequiresStoredCredentials(t *testing.T) {
 			t.Fatal("saveConfig should not be called")
 			return nil
 		},
-		newAPIClient: func(string) apiClient {
+		newAPIClient: func(string, bool) apiClient {
 			t.Fatal("newAPIClient should not be called")
 			return nil
 		},
@@ -1395,5 +1408,44 @@ func TestLogsShowsMessageWhenNoLogFile(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "No logs found") {
 		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestSetupTLSOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		initial   bool
+		want      bool
+		wantError bool
+	}{
+		{name: "secure default"},
+		{name: "enable", args: []string{"--insecure"}, want: true},
+		{name: "preserve", initial: true, want: true},
+		{name: "disable", args: []string{"--insecure=false"}, initial: true},
+		{name: "invalid flag", args: []string{"--insecure=invalid"}, wantError: true},
+		{name: "unknown flag", args: []string{"--unknown"}, wantError: true},
+		{name: "unexpected argument", args: []string{"oops"}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var saved config.Config
+			called := false
+			d := deps{
+				configPath: func() (string, error) { return "config.json", nil },
+				loadConfig: func(string) (config.Config, error) { return config.Config{InsecureTLS: tc.initial}, nil },
+				saveConfig: func(_ string, cfg config.Config) error { saved = cfg; called = true; return nil },
+			}
+			var stdout, stderr strings.Builder
+			code := run(append([]string{"setup"}, tc.args...), strings.NewReader("https://api.test/api\n"), &stdout, &stderr, d)
+			if tc.wantError {
+				if code != 1 || called {
+					t.Fatalf("exit = %d, saved = %t", code, called)
+				}
+				return
+			}
+			if code != 0 || !called || saved.InsecureTLS != tc.want {
+				t.Fatalf("exit = %d, saved = %t, TLS setting = %t, stderr = %s", code, called, saved.InsecureTLS, stderr.String())
+			}
+		})
 	}
 }

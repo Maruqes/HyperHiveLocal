@@ -28,6 +28,23 @@ hyperhive setup
 
 You'll be prompted for the API base URL (e.g., `https://api.example.com/api`).
 
+### Self-signed certificates
+
+For a local API with a self-signed certificate:
+
+```bash
+hyperhive setup --insecure
+hyperhive login
+```
+
+Enter the same API base URL during setup. This saves `"insecure_tls": true` in the config and applies to all API requests, including the systemd service. It disables TLS certificate and server identity verification; use it only on a trusted network. Verification is enabled by default. Restore it with `hyperhive setup --insecure=false`.
+
+The service uses a separate config. To enable self-signed certificates for the service:
+
+```bash
+sudo env HYPERHIVE_CONFIG=/etc/hyperhive/config.json hyperhive setup --insecure
+```
+
 ### Login
 
 ```bash

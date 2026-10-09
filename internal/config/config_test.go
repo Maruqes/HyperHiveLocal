@@ -9,10 +9,11 @@ import (
 func TestSaveAndLoadConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "hyperhive", "config.json")
 	cfg := Config{
-		BaseURL:  "https://api.example.test/hyperhive",
-		Email:    "hyperhive@email.com",
-		Password: "pass",
-		Token:    "token",
+		InsecureTLS: true,
+		BaseURL:     "https://api.example.test/hyperhive",
+		Email:       "hyperhive@email.com",
+		Password:    "pass",
+		Token:       "token",
 	}
 
 	if err := Save(path, cfg); err != nil {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -51,7 +52,7 @@ type deps struct {
 	configPath        func() (string, error)
 	loadConfig        func(string) (config.Config, error)
 	saveConfig        func(string, config.Config) error
-	newAPIClient      func(string) apiClient
+	newAPIClient      func(string, bool) apiClient
 	passwordReader    terminal.PasswordReader
 	listSSHPublicKeys func() ([]sshPublicKeyFile, error)
 	readPublicKeyFile func(string) (string, error)
@@ -65,7 +66,7 @@ func defaultDeps() deps {
 		configPath:        config.Path,
 		loadConfig:        config.Load,
 		saveConfig:        config.Save,
-		newAPIClient:      func(baseURL string) apiClient { return api.NewClient(baseURL) },
+		newAPIClient:      func(baseURL string, insecureTLS bool) apiClient { return api.NewClientWithTLS(baseURL, insecureTLS) },
 		passwordReader:    terminal.Reader{},
 		listSSHPublicKeys: discoverSSHPublicKeyFiles,
 		readPublicKeyFile: readPublicKeyFile,
@@ -92,7 +93,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, d deps) int {
 
 	switch args[0] {
 	case "setup":
-		if err := setup(stdin, stdout, d); err != nil {
+		if err := setup(args[1:], stdin, stdout, d); err != nil {
 			fmt.Fprintf(stderr, "Erro: %v\n", err)
 			return 1
 		}
@@ -151,7 +152,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, d deps) int {
 	}
 }
 
-func setup(stdin io.Reader, stdout io.Writer, d deps) error {
+func setup(args []string, stdin io.Reader, stdout io.Writer, d deps) error {
 	path, err := d.configPath()
 	if err != nil {
 		return err
@@ -159,6 +160,16 @@ func setup(stdin io.Reader, stdout io.Writer, d deps) error {
 	cfg, err := d.loadConfig(path)
 	if err != nil {
 		return err
+	}
+
+	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.BoolVar(&cfg.InsecureTLS, "insecure", cfg.InsecureTLS, "Allow self-signed certificates by disabling TLS certificate verification")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("usage: hyperhive setup [--insecure[=true|false]]")
 	}
 
 	rawBaseURL, err := terminal.ReadLine("API URL: ", stdin, stdout)
@@ -175,6 +186,9 @@ func setup(stdin io.Reader, stdout io.Writer, d deps) error {
 		return err
 	}
 
+	if cfg.InsecureTLS {
+		fmt.Fprintln(stdout, "TLS certificate verification disabled for this API (insecure_tls=true).")
+	}
 	fmt.Fprintf(stdout, "Configuração guardada em %s\n", path)
 	return nil
 }
@@ -208,7 +222,7 @@ func login(stdin io.Reader, stdout io.Writer, d deps) error {
 		return errors.New("password não pode estar vazia")
 	}
 
-	login, err := d.newAPIClient(cfg.BaseURL).Login(context.Background(), email, password)
+	login, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).Login(context.Background(), email, password)
 	if err != nil {
 		return err
 	}
@@ -240,7 +254,7 @@ func vms(stdout io.Writer, d deps) error {
 		return errors.New("executa primeiro: hyperhive login")
 	}
 
-	res, err := d.newAPIClient(cfg.BaseURL).GetAllVMs(context.Background(), cfg.Token)
+	res, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).GetAllVMs(context.Background(), cfg.Token)
 	if err != nil {
 		return err
 	}
@@ -294,7 +308,7 @@ func nfs(stdout io.Writer, d deps) error {
 		return errors.New("executa primeiro: hyperhive login")
 	}
 
-	shares, err := d.newAPIClient(cfg.BaseURL).ListNFS(context.Background(), cfg.Token)
+	shares, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).ListNFS(context.Background(), cfg.Token)
 	if err != nil {
 		return err
 	}
@@ -347,7 +361,7 @@ func installNFS(stdout io.Writer, d deps) error {
 		return errors.New("executa primeiro: hyperhive login")
 	}
 
-	shares, err := d.newAPIClient(cfg.BaseURL).ListNFS(context.Background(), cfg.Token)
+	shares, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).ListNFS(context.Background(), cfg.Token)
 	if err != nil {
 		return err
 	}
@@ -387,7 +401,7 @@ func removeNFS(stdout io.Writer, d deps) error {
 		return errors.New("executa primeiro: hyperhive login")
 	}
 
-	shares, err := d.newAPIClient(cfg.BaseURL).ListNFS(context.Background(), cfg.Token)
+	shares, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).ListNFS(context.Background(), cfg.Token)
 	if err != nil {
 		return err
 	}
@@ -512,7 +526,7 @@ func attemptServiceLogin(ctx context.Context, logger *log.Logger, d deps) int {
 	}
 
 	logger.Printf("systemdexec: logging in as %s", cfg.Email)
-	login, err := d.newAPIClient(cfg.BaseURL).Login(ctx, cfg.Email, cfg.Password)
+	login, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).Login(ctx, cfg.Email, cfg.Password)
 	if err != nil {
 		logger.Printf("systemdexec: login error: %v", err)
 		return 1
@@ -551,7 +565,7 @@ func attemptMountAll(ctx context.Context, logger *log.Logger, d deps) int {
 		return 1
 	}
 
-	shares, err := d.newAPIClient(cfg.BaseURL).ListNFS(ctx, cfg.Token)
+	shares, err := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS).ListNFS(ctx, cfg.Token)
 	if err != nil {
 		logger.Printf("systemdexec: list nfs error: %v", err)
 		return 1
@@ -731,7 +745,7 @@ func ssh(stdin io.Reader, stdout io.Writer, d deps) error {
 		return errors.New("executa primeiro: hyperhive login")
 	}
 
-	client := d.newAPIClient(cfg.BaseURL)
+	client := d.newAPIClient(cfg.BaseURL, cfg.InsecureTLS)
 	res, err := client.GetAllVMs(context.Background(), cfg.Token)
 	if err != nil {
 		return err
@@ -975,6 +989,10 @@ Usage:
   hyperhive remove_nfs  Unmount all NFS shares from the API
   hyperhive systemdexec Run as a systemd service to mount NFS shares and refresh login
   hyperhive logs        Show systemdexec service logs
+
+TLS:
+  hyperhive setup --insecure       Allow self-signed certificates (disables verification)
+  hyperhive setup --insecure=false Restore TLS certificate verification
 
 Config:
   Default path: ~/.config/hyperhive/config.json
